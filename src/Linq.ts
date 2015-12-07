@@ -1,4 +1,18 @@
-var Types = {
+interface ILinq {
+    <T>(data: T[]): LinqProvider<T>;
+    Types: any;
+    toLinq<T>(data: T[]): LinqProvider<T>;
+    LinqProvider: any;
+}
+
+var Linq: ILinq = <ILinq>function toLinq<T>(data: T[]) {
+    return new LinqProvider<T>(data);
+};
+
+
+var toLinq = Linq.toLinq = Linq;
+
+var Types = Linq.Types = {
     Boolean: typeof true,
     Number: typeof 0,
     String: typeof "",
@@ -7,23 +21,23 @@ var Types = {
     Function: typeof function() { }
 };
 
-export enum TypeKind {
+enum SortTypeKind {
     unkown,
     number,
     string,
     bool
 }
 
-function getTypeKind(obj: any) {
+function getSortTypeKind(obj: any) {
     switch (typeof obj) {
-        case Types.Boolean: return TypeKind.bool;
-        case Types.Number: return TypeKind.number;
-        case Types.String: return TypeKind.string;
-        default: return TypeKind.unkown;
+        case Types.Boolean: return SortTypeKind.bool;
+        case Types.Number: return SortTypeKind.number;
+        case Types.String: return SortTypeKind.string;
+        default: return SortTypeKind.unkown;
     }
 }
 
-export class LinqProvider<T> implements Iterable<T>   {
+class LinqProvider<T> implements Iterable<T>   {
 
     constructor(private data: Iterable<T>) {
 
@@ -80,7 +94,7 @@ export class LinqProvider<T> implements Iterable<T>   {
         return new LinqProvider<IPair<T>>(this.GetPairs(mode));
     }
 
-    orderBy(fn: (d: T) => any) {
+    orderBy(fn: (d: T) => any): OrderDataProvider<T> {
 
         var data = this.toArray();
 
@@ -88,7 +102,7 @@ export class LinqProvider<T> implements Iterable<T>   {
         var od = new OrderDetail();
         od.getFunction = fn;
         if (data.length != 0)
-            od.kind = getTypeKind(fn(data[0]));
+            od.kind = getSortTypeKind(fn(data[0]));
 
         var op = new OrderDataProvider(data, [od]);
 
@@ -105,6 +119,14 @@ export class LinqProvider<T> implements Iterable<T>   {
 
     select<TOut>(fn: (d: T) => TOut) {
         return new LinqProvider<TOut>(this.GetSelect(fn));
+    }
+
+    distinct(fn: (d : T) => any){
+
+    }
+
+    private *GetDistinct(fn: (d : T) => any): Iterable<T>{
+        
     }
 
     private *GetWhere(fn: (d: T) => boolean): Iterable<T> {
@@ -165,10 +187,12 @@ export class LinqProvider<T> implements Iterable<T>   {
 
 class OrderDetail {
     getFunction: (d: any) => any;
-    kind: TypeKind;
+    kind: SortTypeKind;
 }
 
-export class OrderDataProvider<T> {
+
+
+class OrderDataProvider<T>  {
     private _data: T[];
     private _orderDetails: OrderDetail[];
 
@@ -185,7 +209,7 @@ export class OrderDataProvider<T> {
         var od = new OrderDetail();
         od.getFunction = fn;
         if (data.length != 0)
-            od.kind = getTypeKind(fn(data[0]));
+            od.kind = getSortTypeKind(fn(data[0]));
 
         var arr: OrderDetail[] = [];
         for (let o of this._orderDetails) {
@@ -205,15 +229,15 @@ export class OrderDataProvider<T> {
             var out;
             for (let od of this._orderDetails) {
                 switch (od.kind) {
-                    case TypeKind.number:
-                        out = od.getFunction( a) - od.getFunction(b);
+                    case SortTypeKind.number:
+                        out = od.getFunction(a) - od.getFunction(b);
                         break;
-                    case TypeKind.string:
+                    case SortTypeKind.string:
                         out = (<string>od.getFunction(a)).localeCompare(<string>od.getFunction(b));
                         break;
 
-                    case TypeKind.bool:
-                    case TypeKind.unkown:
+                    case SortTypeKind.bool:
+                    case SortTypeKind.unkown:
                         throw 'not implemented';
                 }
                 if (out != 0) {
@@ -230,7 +254,7 @@ export class OrderDataProvider<T> {
 }
 
 
-export enum PairMode {
+enum PairMode {
     Default,
     firstNull,
     lastNull,
@@ -242,7 +266,4 @@ interface IPair<T> {
     b: T;
 }
 
-
-export function toLinq<T>(data: T[]) {
-    return new LinqProvider<T>(data);
-}
+Linq.LinqProvider = LinqProvider;
