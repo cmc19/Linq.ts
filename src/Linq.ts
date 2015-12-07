@@ -5,12 +5,12 @@ interface ILinq {
     LinqProvider: any;
 }
 
-var Linq: ILinq = <ILinq>function toLinq<T>(data: T[]) {
+export function toLinq<T>(data: T[]) {
     return new LinqProvider<T>(data);
 };
 
-
-var toLinq = Linq.toLinq = Linq;
+var Linq: ILinq = <ILinq>toLinq;
+Linq.toLinq = Linq;
 
 var Types = Linq.Types = {
     Boolean: typeof true,
@@ -21,7 +21,21 @@ var Types = Linq.Types = {
     Function: typeof function() { }
 };
 
-enum SortTypeKind {
+
+if (typeof Symbol['iterator'] == Types.Undefined) {
+    Symbol['iterator'] =<any> '@@iterator';
+}
+
+declare var intellisense;
+
+var isVs = false;
+
+if (typeof intellisense !== Types.Undefined) {
+    isVs = true;
+}
+
+
+export enum SortTypeKind {
     unkown,
     number,
     string,
@@ -37,17 +51,30 @@ function getSortTypeKind(obj: any) {
     }
 }
 
-class LinqProvider<T> implements Iterable<T>   {
-
-    constructor(private data: Iterable<T>) {
-
+export class LinqProvider<T> implements Iterable<T>   {
+    protected _data: Iterable<T>;
+    constructor(data: Iterable<T>) {
+        this._data = data;
+        this['@@iterator'] = () => {
+            return this._getIterator();
+        }
     }
 
 
-    *[Symbol.iterator](): Iterator<T> {
-        for (var d of this.data) {
+    protected *_getIterator(): Iterator<T> {
+        console.log('LinqProvider._getIterator');
+        for (var d of this._data) {
             yield d;
         }
+    }
+
+
+
+    [Symbol.iterator](): Iterator<T> {
+        return this._getIterator();
+        // for (var d of this._data) {
+        //     yield d;
+        // }
     }
 
     single() {
@@ -65,14 +92,14 @@ class LinqProvider<T> implements Iterable<T>   {
     }
 
     first() {
-        for (var d of this.data) {
+        for (var d of this) {
             return d;
         }
         throw 'data is empty';
     }
 
     firstOrDefault(def: T = null) {
-        for (var d of this.data) {
+        for (var d of this) {
             return d;
         }
         return def;
@@ -80,21 +107,47 @@ class LinqProvider<T> implements Iterable<T>   {
 
     toArray() {
         var arr: T[] = [];
-        for (var d of this.data) {
+        for (var d of this) {
             arr.push(d);
         }
         return arr;
     }
 
+    toLookup<TKey, TValue>(fnKey: (d: T) => TKey, fnValues: (d: T) => TValue[]) {
+        if (isVs) {
+            var first = this.firstOrDefault();
+            fnKey(first);
+            fnValues(first);
+        }
+
+        var l = new Lookup<TKey, TValue>();
+
+        for (let i of this) {
+            l.addRange(fnKey(i), fnValues(i));
+        }
+
+        return l;
+    }
+
+
+
     where(fn: (d: T) => boolean) {
-        return new LinqProvider<T>(this.GetWhere(fn));
+        if (isVs) {
+            fn(this.firstOrDefault());
+        }
+
+        return new LinqProvider<T>(this._getWhere(fn));
     }
 
     toPairs(mode: PairMode = PairMode.Default) {
-        return new LinqProvider<IPair<T>>(this.GetPairs(mode));
+        return new LinqProvider<IPair<T>>(this._getPairs(mode));
     }
 
     orderBy(fn: (d: T) => any): OrderDataProvider<T> {
+
+        if (isVs) {
+            fn(this.firstOrDefault());
+        }
 
         var data = this.toArray();
 
@@ -110,6 +163,10 @@ class LinqProvider<T> implements Iterable<T>   {
     }
 
     sum(fn: (d: T) => number) {
+        if (isVs) {
+            fn(this.firstOrDefault());
+        }
+
         var res = 0;
         for (var i of this) {
             res += fn(i);
@@ -118,37 +175,61 @@ class LinqProvider<T> implements Iterable<T>   {
     }
 
     select<TOut>(fn: (d: T) => TOut) {
-        return new LinqProvider<TOut>(this.GetSelect(fn));
+        if (isVs) {
+            fn(this.firstOrDefault());
+        }
+
+        return new LinqProvider<TOut>(this._getSelect(fn));
     }
 
-    distinct(fn: (d : T) => any){
+    distinct(fn: (d: T) => any = d=> d) {
+        if (isVs) {
+            fn(this.firstOrDefault());
+        }
 
+        return new LinqProvider<T>(this._getDistinct(fn));
     }
 
-    private *GetDistinct(fn: (d : T) => any): Iterable<T>{
-        
+    contains(item: T): boolean {
+        for (let i of this) {
+            if (i === item) return true;
+        }
+        return false;
     }
 
-    private *GetWhere(fn: (d: T) => boolean): Iterable<T> {
-        for (var x of this.data) {
+    private *_getDistinct(fn: (d: T) => any): Iterable<T> {
+        var hash = {};
+
+        for (let x of this) {
+            var fnResult = fn(x);
+            if (hash[fnResult] === 1) {
+                continue;
+            }
+            hash[fnResult] = 1;
+            yield x;
+        }
+    }
+
+    private *_getWhere(fn: (d: T) => boolean): Iterable<T> {
+        for (var x of this) {
             if (fn(x)) {
                 yield x;
             }
         }
     }
 
-    private *GetSelect<TOut>(fn: (d: T) => TOut) {
-        for (let x of this.data) {
+    private *_getSelect<TOut>(fn: (d: T) => TOut) {
+        for (let x of this) {
             yield fn(x);
         }
     }
 
-    private *GetPairs(mode: PairMode): Iterable<IPair<T>> {
+    private *_getPairs(mode: PairMode): Iterable<IPair<T>> {
         switch (mode) {
             case PairMode.Default:
                 {
                     var last: T = null;
-                    for (let x of this.data) {
+                    for (let x of this) {
                         if (last != null) {
                             yield {
                                 a: last,
@@ -161,7 +242,7 @@ class LinqProvider<T> implements Iterable<T>   {
                 }
             case PairMode.lastNull: {
                 var last: T = null;
-                for (let x of this.data) {
+                for (let x of this) {
                     if (last != null) {
                         yield {
                             a: last,
@@ -185,25 +266,45 @@ class LinqProvider<T> implements Iterable<T>   {
 }
 
 
-class OrderDetail {
+export class OrderDetail {
     getFunction: (d: any) => any;
     kind: SortTypeKind;
 }
 
 
 
-class OrderDataProvider<T>  {
-    private _data: T[];
+export class OrderDataProvider<T> extends LinqProvider<T>  {
+    private _array: T[];
     private _orderDetails: OrderDetail[];
 
+    /**
+     * @param data {T[]} needs to be an array. length property is used
+     */
     constructor(data: T[], orderDetails: OrderDetail[] = []) {
-        this._data = data;
+        super(data);
+        this._array = data;
         this._orderDetails = orderDetails;
+    }
+
+    protected *_getIterator(): Iterator<T> {
+        console.log('OrderDataProvider._getIterator');
+        var data = this.toArray();
+        for (var i of data) {
+            yield i;
+        }
+    }
+
+    orderBy(fn: (d: T) => any): OrderDataProvider<T> {
+        throw 'Must call thenBy in an orderby context';
     }
 
     thenBy(fn: (d: T) => any) {
 
-        var data = this._data;
+        if (isVs) {
+            fn(this.firstOrDefault());
+        }
+
+        var data = this._array;
 
 
         var od = new OrderDetail();
@@ -223,9 +324,9 @@ class OrderDataProvider<T>  {
     }
 
     toArray() {
-        if (this._data.length == 0) return this._data;
+        if (this._array.length == 0) return this._array;
 
-        var data = this._data.sort((a: any, b: any) => {
+        var data = this._array.sort((a: any, b: any) => {
             var out;
             for (let od of this._orderDetails) {
                 switch (od.kind) {
@@ -253,15 +354,78 @@ class OrderDataProvider<T>  {
 
 }
 
+interface LookupMap<TValue> {
+    [key: number]: TValue[];
+    [key: string]: TValue[];
+}
 
-enum PairMode {
+export interface ILookupKeyValues<TKey, TValue> {
+    key: TKey;
+    value: TValue[];
+}
+
+export class Lookup<TKey, TValue> extends LinqProvider<ILookupKeyValues<TKey, TValue>> {
+    private _map: LookupMap<TValue> = {};
+
+    constructor() {
+        super(null);
+    }
+
+    protected *_getIterator(): Iterator<ILookupKeyValues<TKey, TValue>> {
+        console.log('LinqProvider._getIterator');
+        for (var key in this._map) {
+            var d = this._map[key];
+            yield { key: key, value: d };
+        }
+    }
+
+    private _getArray(k: TKey): TValue[] {
+        var st = getSortTypeKind(k);
+        switch (st) {
+            case SortTypeKind.unkown:
+            case SortTypeKind.bool:
+                throw 'Lookup Key must be String or Number';
+        }
+
+        var arr = this._map[<any>k];
+        if (typeof arr === Types.Undefined) {
+            arr = this._map[<any>k] = [];
+        }
+
+        return arr;
+    }
+
+    add(k: TKey, v: TValue) {
+        var arr = this._getArray(k);
+        arr.push(v);
+    }
+
+    addRange(k: TKey, v: TValue[]) {
+        var arr = this._getArray(k);
+
+        for (let i of v) {
+            arr.push(i);
+        }
+    }
+
+    get(k: TKey) {
+        return this._getArray(k);
+    }
+
+    toObject(): any {
+        return this._map;
+    }
+
+}
+
+export enum PairMode {
     Default,
     firstNull,
     lastNull,
     bothNull
 }
 
-interface IPair<T> {
+export interface IPair<T> {
     a: T;
     b: T;
 }
