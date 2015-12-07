@@ -21,7 +21,7 @@ var Types = Linq.Types = {
     Function: typeof function() { }
 };
 
-
+//IE Support. Shim needed.
 if (typeof Symbol['iterator'] == Types.Undefined) {
     Symbol['iterator'] =<any> '@@iterator';
 }
@@ -55,6 +55,7 @@ export class LinqProvider<T> implements Iterable<T>   {
     protected _data: Iterable<T>;
     constructor(data: Iterable<T>) {
         this._data = data;
+        //IE Support
         this['@@iterator'] = () => {
             return this._getIterator();
         }
