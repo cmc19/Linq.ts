@@ -63,7 +63,6 @@ export class LinqProvider<T> implements Iterable<T>   {
 
 
     protected *_getIterator(): Iterator<T> {
-        console.log('LinqProvider._getIterator');
         for (var d of this._data) {
             yield d;
         }
@@ -288,7 +287,6 @@ export class OrderDataProvider<T> extends LinqProvider<T>  {
     }
 
     protected *_getIterator(): Iterator<T> {
-        console.log('OrderDataProvider._getIterator');
         var data = this.toArray();
         for (var i of data) {
             yield i;
